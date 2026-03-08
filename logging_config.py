@@ -6,8 +6,17 @@ SQLAlchemy, uvicorn access logs, and debug noise are suppressed.
 import logging
 import logging.config
 import os
+import sys
 from config import settings
 from datetime import datetime
+
+# Force UTF-8 on Windows console so emojis/unicode don't crash logger
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 LOGGING_CONFIG = {
     "version": 1,

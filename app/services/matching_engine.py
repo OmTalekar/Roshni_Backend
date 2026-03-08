@@ -113,13 +113,13 @@ class MatchingEngine:
                 
                 if blockchain_result.get("status") == "submitted":
                     logger.info(
-                        f"✅ SUN tokens minted: {pool_allocation_kwh:.2f} SUN → "
+                        f"[BLOCKCHAIN OK] SUN tokens minted: {pool_allocation_kwh:.2f} SUN -> "
                         f"{house.house_id} (TX: {blockchain_result.get('tx_id')})"
                     )
                 else:
-                    logger.error(f"❌ SUN transfer failed: {blockchain_result.get('message')}")
+                    logger.error(f"[BLOCKCHAIN FAIL] SUN transfer failed: {blockchain_result.get('message')}")
             except Exception as e:
-                logger.error(f"❌ SUN mint error: {str(e)}", exc_info=True)
+                logger.error(f"[BLOCKCHAIN ERROR] SUN mint error: {str(e)}", exc_info=True)
         else:
             reason = []
             if pool_allocation_kwh <= 0:
@@ -128,7 +128,7 @@ class MatchingEngine:
                 reason.append("No wallet")
             if not house.opt_in_sun_asa:
                 reason.append("Not opted in")
-            logger.warning(f"⚠️ SUN transfer skipped: {', '.join(reason)}")
+            logger.warning(f"[BLOCKCHAIN SKIP] SUN transfer skipped: {', '.join(reason)}")
 
         # ✅ Also update seller's SUN minted for houses that contributed supply
         self._credit_sellers(house.feeder_id, pool_allocation_kwh)

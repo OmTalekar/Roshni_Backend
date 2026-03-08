@@ -46,10 +46,10 @@ class BlockchainService:
             private_key = settings.algorand_admin_private_key.strip()
             self.admin_private_key = private_key
             self.admin_public_key = account.address_from_private_key(private_key)
-            logger.info(f"✅ Admin account loaded: {self.admin_public_key}")
+            logger.info(f"[ADMIN] Account loaded: {self.admin_public_key}")
             logger.info(f"   Private key length: {len(private_key)}")
         except Exception as e:
-            logger.error(f"❌ Failed to setup admin account: {str(e)}", exc_info=True)
+            logger.error(f"[ADMIN] Failed to setup admin account: {str(e)}", exc_info=True)
 
     # ================= ASA CREATION =================
 
@@ -91,10 +91,10 @@ class BlockchainService:
         logger.info(f"{'='*70}")
         
         if not self.sun_asa_id:
-            logger.error("❌ SUN ASA not configured")
+            logger.error("[BLOCKCHAIN] SUN ASA not configured")
             return {"status": "error", "message": "SUN ASA not configured"}
         if not self.admin_private_key:
-            logger.error("❌ Admin key not configured")
+            logger.error("[BLOCKCHAIN] Admin key not configured")
             return {"status": "error", "message": "Admin not configured"}
 
         try:
@@ -119,11 +119,11 @@ class BlockchainService:
             logger.info(f"Transaction signed")
             
             txid = self.algod_client.send_transaction(signed_txn)
-            logger.info(f"✅ Transaction submitted: {txid}")
+            logger.info(f"[BLOCKCHAIN OK] Transaction submitted: {txid}")
             
             return {"status": "submitted", "tx_id": txid, "amount": amount_kwh, "recipient": recipient_address}
         except Exception as e:
-            logger.error(f"❌ SUN transfer error: {str(e)}", exc_info=True)
+            logger.error(f"[BLOCKCHAIN ERROR] SUN transfer error: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
     # ================= BILL HASH RECORD =================
@@ -212,7 +212,7 @@ class BlockchainService:
             params = self.algod_client.suggested_params()
             return {
                 "network": settings.algorand_network,
-                "node_url": settings.algorand_node_url,   # ✅ Fix: was missing, used in frontend
+                "node_url": settings.algorand_node_url,   # Fix: was missing, used in frontend
                 "latest_round": status.get("last-round"),
                 "min_fee": params.min_fee,
                 "sun_asa_id": self.sun_asa_id,
