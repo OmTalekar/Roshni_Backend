@@ -66,6 +66,8 @@ class DemandResponse(BaseModel):
     grid_required_kwh: float
     ai_reasoning: str
     estimated_cost_inr: float
+    sun_tokens_minted: float = 0.0
+    blockchain_tx: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -78,6 +80,8 @@ class LivePoolState(BaseModel):
     current_supply_kwh: float
     current_demand_kwh: float
     grid_drawdown_kwh: float
+    today_fulfilled_kwh: float = 0.0
+    today_trade_count: int = 0
     timestamp: datetime
 
     class Config:

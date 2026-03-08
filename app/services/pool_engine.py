@@ -66,7 +66,7 @@ class PoolEngine:
                 # Use real-time IoT data if available
                 total_supply += iot_generation
                 active_generators += 1
-                logger.info(f"  ✅ IoT: {house.house_id} = {iot_generation:.2f} kW")
+                logger.info(f"  [OK] IoT: {house.house_id} = {iot_generation:.2f} kW")
             else:
                 # Fallback to latest database record
                 latest = self.db.query(GenerationRecord).filter(
@@ -77,9 +77,9 @@ class PoolEngine:
                 if latest:
                     total_supply += latest.generation_kwh
                     active_generators += 1
-                    logger.info(f"  ✅ DB:  {house.house_id} = {latest.generation_kwh:.2f} kW")
+                    logger.info(f"  [OK] DB:  {house.house_id} = {latest.generation_kwh:.2f} kW")
                 else:
-                    logger.info(f"  ❌ No data: {house.house_id}")
+                    logger.info(f"  [NO] No data: {house.house_id}")
 
         logger.info(f"Total Supply from Generation: {total_supply:.2f} kWh")
 
@@ -103,12 +103,24 @@ class PoolEngine:
 
         total_demand = sum(d.demand_kwh for d in pending_demand)
         logger.info(f"Pending Demand: {total_demand:.2f} kWh ({len(pending_demand)} records)")
-        
+
+        # Also count today's fulfilled demand for dashboard display
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
+        fulfilled_today = self.db.query(DemandRecord).join(House).filter(
+            House.feeder_id == feeder_id,
+            DemandRecord.status.in_(["fulfilled", "partial"]),
+            DemandRecord.created_at >= today_start,
+        ).all()
+        today_fulfilled_kwh = sum(d.demand_kwh for d in fulfilled_today)
+        logger.info(f"Fulfilled Today: {today_fulfilled_kwh:.2f} kWh ({len(fulfilled_today)} trades)")
+
         grid_drawdown = max(0, total_demand - total_supply)
 
         result = {
             "current_supply_kwh": total_supply,
             "current_demand_kwh": total_demand,
+            "today_fulfilled_kwh": today_fulfilled_kwh,
+            "today_trade_count": len(fulfilled_today),
             "grid_drawdown": grid_drawdown,
             "surplus": max(0, total_supply - total_demand),
             "shortage": grid_drawdown,

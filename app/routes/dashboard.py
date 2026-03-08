@@ -73,6 +73,8 @@ async def get_dashboard(house_id: str, db: Session = Depends(get_db)):
             current_supply_kwh=pool_state.get("current_supply_kwh", 0),
             current_demand_kwh=pool_state.get("current_demand_kwh", 0),
             grid_drawdown_kwh=pool_state.get("grid_drawdown", 0),
+            today_fulfilled_kwh=pool_state.get("today_fulfilled_kwh", 0),
+            today_trade_count=pool_state.get("today_trade_count", 0),
             timestamp=pool_state.get("timestamp", datetime.utcnow()),
         )
     else:
@@ -82,6 +84,8 @@ async def get_dashboard(house_id: str, db: Session = Depends(get_db)):
             current_supply_kwh=0,
             current_demand_kwh=0,
             grid_drawdown_kwh=0,
+            today_fulfilled_kwh=0,
+            today_trade_count=0,
             timestamp=datetime.utcnow(),
         )
 
