@@ -46,9 +46,10 @@ class BlockchainService:
             private_key = settings.algorand_admin_private_key.strip()
             self.admin_private_key = private_key
             self.admin_public_key = account.address_from_private_key(private_key)
-            logger.info(f"Admin account loaded: {self.admin_public_key[:10]}...")
+            logger.info(f"✅ Admin account loaded: {self.admin_public_key}")
+            logger.info(f"   Private key length: {len(private_key)}")
         except Exception as e:
-            logger.error(f"Failed to setup admin account: {str(e)}")
+            logger.error(f"❌ Failed to setup admin account: {str(e)}", exc_info=True)
 
     # ================= ASA CREATION =================
 
@@ -84,13 +85,27 @@ class BlockchainService:
 
     def transfer_sun_asa(self, recipient_address: str, amount_kwh: float, reason: str = "allocation") -> dict:
         """Transfer SUN ASA tokens to consumer."""
+        logger.info(f"\n{'='*70}")
+        logger.info(f"BLOCKCHAIN TRANSFER: {amount_kwh:.2f} SUN to {recipient_address}")
+        logger.info(f"Reason: {reason}")
+        logger.info(f"{'='*70}")
+        
         if not self.sun_asa_id:
+            logger.error("❌ SUN ASA not configured")
             return {"status": "error", "message": "SUN ASA not configured"}
         if not self.admin_private_key:
+            logger.error("❌ Admin key not configured")
             return {"status": "error", "message": "Admin not configured"}
 
         try:
+            logger.info(f"Admin Address: {self.admin_public_key}")
+            logger.info(f"Recipient: {recipient_address}")
+            logger.info(f"ASA ID: {self.sun_asa_id}")
+            logger.info(f"Amount: {amount_kwh:.2f}")
+            
             params = self.algod_client.suggested_params()
+            logger.info(f"Got suggested params: fee={params.min_fee}")
+            
             txn = AssetTransferTxn(
                 sender=self.admin_public_key,
                 sp=params,
@@ -98,12 +113,17 @@ class BlockchainService:
                 amt=int(amount_kwh),
                 index=self.sun_asa_id,
             )
+            logger.info(f"Transaction created")
+            
             signed_txn = txn.sign(self.admin_private_key)
+            logger.info(f"Transaction signed")
+            
             txid = self.algod_client.send_transaction(signed_txn)
-            logger.info(f"SUN transfer: {amount_kwh} to {recipient_address[:8]}... ({reason})")
+            logger.info(f"✅ Transaction submitted: {txid}")
+            
             return {"status": "submitted", "tx_id": txid, "amount": amount_kwh, "recipient": recipient_address}
         except Exception as e:
-            logger.error(f"SUN transfer error: {str(e)}")
+            logger.error(f"❌ SUN transfer error: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
     # ================= BILL HASH RECORD =================

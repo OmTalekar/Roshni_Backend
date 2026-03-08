@@ -17,8 +17,14 @@ logger = logging.getLogger(__name__)
 @router.post("/submit", response_model=DemandResponse)
 async def submit_demand(data: DemandSubmit, db: Session = Depends(get_db)):
     """Submit energy demand and trigger AI matching."""
+    logger.info(f"\n{'='*70}")
+    logger.info(f"DEMAND SUBMISSION: {data.house_id}")
+    logger.info(f"Amount: {data.demand_kwh:.2f} kWh, Priority: {data.priority_level}")
+    logger.info(f"{'='*70}")
+    
     house = db.query(House).filter(House.house_id == data.house_id).first()
     if not house:
+        logger.error(f"❌ House {data.house_id} not found")
         raise HTTPException(status_code=404, detail="House not found")
 
     # Record demand as pending
@@ -38,36 +44,36 @@ async def submit_demand(data: DemandSubmit, db: Session = Depends(get_db)):
         matching = MatchingEngine(db)
         result = matching.match_demand(house.id, data.demand_kwh)
     except Exception as e:
-        logger.error(f"Matching failed for {data.house_id}: {e}")
+        logger.error(f"❌ Matching failed: {str(e)}", exc_info=True)
         # Fallback: allocate all from grid
         result = {
             "pool_kwh": 0,
             "grid_kwh": data.demand_kwh,
             "ai_reasoning": "Fallback: matching failed, using grid",
             "estimated_pool_cost_inr": 0,
-            "estimated_grid_cost_inr": data.demand_kwh * 12,  # Assume 12 INR/kWh
+            "estimated_grid_cost_inr": data.demand_kwh * 12,
             "sun_tokens_minted": 0,
             "blockchain_tx": None,
         }
 
     # ✅ Fix: mark demand as fulfilled so it stops counting in pool demand
-    demand.status = "fulfilled" if result["grid_kwh"] == 0 else "partial"
+    demand.status = "fulfilled" if result.get("grid_kwh", 0) == 0 else "partial"
     db.commit()
 
     logger.info(
-        f"Demand matched: {data.house_id} → "
-        f"Pool={result['pool_kwh']:.2f}kWh, Grid={result['grid_kwh']:.2f}kWh"
+        f"✅ Result: Pool={result.get('pool_kwh', 0):.2f}kWh, Grid={result.get('grid_kwh', 0):.2f}kWh"
     )
+    logger.info(f"{'='*70}\n")
 
     return DemandResponse(
         demand_id=demand.id,
         house_id=data.house_id,
         demand_kwh=data.demand_kwh,
-        allocation_status="matched" if result["grid_kwh"] == 0 else "partial",
-        allocated_kwh=result["pool_kwh"],
-        grid_required_kwh=result["grid_kwh"],
-        ai_reasoning=result["ai_reasoning"],
-        estimated_cost_inr=result["estimated_pool_cost_inr"] + result["estimated_grid_cost_inr"],
+        allocation_status="matched" if result.get("grid_kwh", 0) == 0 else "partial",
+        allocated_kwh=result.get("pool_kwh", 0),
+        grid_required_kwh=result.get("grid_kwh", 0),
+        ai_reasoning=result.get("ai_reasoning", ""),
+        estimated_cost_inr=result.get("estimated_pool_cost_inr", 0) + result.get("estimated_grid_cost_inr", 0),
     )
 
 

@@ -41,6 +41,10 @@ class PoolEngine:
         A house is considered active if it sent data in last 2 minutes.
         Includes real-time IoT data from connected devices.
         """
+        logger.debug(f"\n{'='*70}")
+        logger.debug(f"POOL STATE CALCULATION: Feeder={feeder_id}")
+        logger.debug(f"{'='*70}")
+        
         logger.debug(f"Getting pool state for feeder {feeder_id}")
         two_min_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
 
@@ -62,7 +66,7 @@ class PoolEngine:
                 # Use real-time IoT data if available
                 total_supply += iot_generation
                 active_generators += 1
-                logger.info(f"Using IoT data for {house.house_id}: {iot_generation} kW")
+                logger.info(f"  ✅ IoT: {house.house_id} = {iot_generation:.2f} kW")
             else:
                 # Fallback to latest database record
                 latest = self.db.query(GenerationRecord).filter(
@@ -73,7 +77,11 @@ class PoolEngine:
                 if latest:
                     total_supply += latest.generation_kwh
                     active_generators += 1
-                    logger.debug(f"Using DB data for {house.house_id}: {latest.generation_kwh} kW")
+                    logger.info(f"  ✅ DB:  {house.house_id} = {latest.generation_kwh:.2f} kW")
+                else:
+                    logger.info(f"  ❌ No data: {house.house_id}")
+
+        logger.info(f"Total Supply from Generation: {total_supply:.2f} kWh")
 
         # Subtract recently allocated pool energy (simulates committed supply)
         recent_allocations = self.db.query(Allocation).join(House).filter(
@@ -82,7 +90,10 @@ class PoolEngine:
             Allocation.created_at >= two_min_ago,
         ).all()
         allocated_supply = sum(a.allocated_kwh for a in recent_allocations)
+        logger.info(f"Recently Allocated (pool): {allocated_supply:.2f} kWh")
+        
         total_supply = max(0, total_supply - allocated_supply)  # Pool decreases when allocated
+        logger.info(f"Available Supply (after allocation): {total_supply:.2f} kWh")
 
         # Get pending demand across feeder
         pending_demand = self.db.query(DemandRecord).join(House).filter(
@@ -91,6 +102,8 @@ class PoolEngine:
         ).all()
 
         total_demand = sum(d.demand_kwh for d in pending_demand)
+        logger.info(f"Pending Demand: {total_demand:.2f} kWh ({len(pending_demand)} records)")
+        
         grid_drawdown = max(0, total_demand - total_supply)
 
         result = {
@@ -102,7 +115,9 @@ class PoolEngine:
             "active_generators": active_generators,
             "timestamp": datetime.utcnow(),
         }
-        logger.info(f"Pool state for feeder {feeder_id}: Supply={total_supply:.2f}, Allocated={allocated_supply:.2f}, Demand={total_demand:.2f}")
+        logger.info(f"{'='*70}")
+        logger.info(f"POOL STATE: Supply={total_supply:.2f}kWh, Demand={total_demand:.2f}kWh, Grid={grid_drawdown:.2f}kWh")
+        logger.info(f"{'='*70}")
         return result
 
     def _get_realtime_iot_generation(self, house_id: str) -> float:

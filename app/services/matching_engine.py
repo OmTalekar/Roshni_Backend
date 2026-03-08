@@ -26,13 +26,22 @@ class MatchingEngine:
         Match consumer demand with pool supply.
         Returns allocation breakdown, AI reasoning, and triggers SUN token mint.
         """
+        logger.info(f"\n{'='*60}")
+        logger.info(f"MATCHING STARTED: House={house_id}, Demand={demand_kwh:.2f}kWh")
+        logger.info(f"{'='*60}")
+        
         house = self.db.query(House).filter(House.id == house_id).first()
         if not house:
             raise ValueError(f"House {house_id} not found")
+        
+        logger.info(f"House found: {house.house_id}, Feeder: {house.feeder_id}")
 
         # ✅ Use live recalculated pool state (not cached DB value)
         pool_state = self.pool_engine.get_pool_state(house.feeder_id)
         available_supply = pool_state["current_supply_kwh"]
+        
+        logger.info(f"Pool State: Supply={available_supply:.2f}kWh, Demand={pool_state['current_demand_kwh']:.2f}kWh")
+        logger.info(f"Active Generators: {pool_state['active_generators']}")
 
         # Get AI allocation decision
         ai_recommendation = self.ai_service.get_allocation_strategy(
@@ -42,6 +51,9 @@ class MatchingEngine:
             pool_rate_inr=self._get_pool_rate(),
             house_priority=5,
         )
+        
+        logger.info(f"AI Recommendation: Pool={ai_recommendation.get('pool_kwh', 0):.2f}kWh, Grid={ai_recommendation.get('grid_kwh', 0):.2f}kWh")
+        logger.info(f"AI Reasoning: {ai_recommendation.get('reasoning', '')}")
 
         pool_allocation_kwh = min(
             ai_recommendation.get("pool_kwh", 0),
@@ -49,11 +61,13 @@ class MatchingEngine:
             demand_kwh,
         )
         grid_fallback_kwh = max(0, demand_kwh - pool_allocation_kwh)
+        
+        logger.info(f"FINAL ALLOCATION: Pool={pool_allocation_kwh:.2f}kWh, Grid={grid_fallback_kwh:.2f}kWh")
 
         # Save allocation record
         allocation = Allocation(
             house_id=house_id,
-            allocated_kwh=pool_allocation_kwh,
+            allocated_kwh=pool_allocation_kwh + grid_fallback_kwh,  # Total allocated
             source_type="pool" if pool_allocation_kwh > 0 else "grid",
             status="confirmed",
             ai_reasoning=ai_recommendation.get("reasoning", ""),
@@ -65,28 +79,56 @@ class MatchingEngine:
             house.current_month_sun_received = (
                 (house.current_month_sun_received or 0) + pool_allocation_kwh
             )
+            logger.info(f"Updated house SUN received: {house.current_month_sun_received:.2f}kWh")
 
         self.db.commit()
         self.db.refresh(allocation)
+        
+        logger.info(f"Allocation saved: ID={allocation.id}")
 
         # ✅ Mint SUN tokens to buyer if pool allocation happened
         blockchain_result = {"status": "skipped"}
         if pool_allocation_kwh > 0 and house.algorand_address and house.opt_in_sun_asa:
             try:
+                logger.info(f"\n{'='*60}")
+                logger.info(f"BLOCKCHAIN TRANSFER INITIATED")
+                logger.info(f"Recipient: {house.algorand_address}")
+                logger.info(f"Amount: {pool_allocation_kwh:.2f} SUN tokens")
+                logger.info(f"{'='*60}")
+                
                 from app.services.blockchain_service import BlockchainService
                 blockchain = BlockchainService()
+                
+                logger.info(f"Admin Address: {blockchain.admin_public_key}")
+                logger.info(f"Admin Private Key Exists: {bool(blockchain.admin_private_key)}")
+                logger.info(f"SUN ASA ID: {blockchain.sun_asa_id}")
+                
                 blockchain_result = blockchain.transfer_sun_asa(
                     recipient_address=house.algorand_address,
                     amount_kwh=pool_allocation_kwh,
                     reason=f"pool_allocation_{allocation.id}",
                 )
+                
+                logger.info(f"Blockchain Result: {blockchain_result}")
+                
                 if blockchain_result.get("status") == "submitted":
                     logger.info(
-                        f"SUN tokens minted: {pool_allocation_kwh:.2f} SUN → "
+                        f"✅ SUN tokens minted: {pool_allocation_kwh:.2f} SUN → "
                         f"{house.house_id} (TX: {blockchain_result.get('tx_id')})"
                     )
+                else:
+                    logger.error(f"❌ SUN transfer failed: {blockchain_result.get('message')}")
             except Exception as e:
-                logger.warning(f"SUN mint skipped (non-critical): {e}")
+                logger.error(f"❌ SUN mint error: {str(e)}", exc_info=True)
+        else:
+            reason = []
+            if pool_allocation_kwh <= 0:
+                reason.append("No pool allocation")
+            if not house.algorand_address:
+                reason.append("No wallet")
+            if not house.opt_in_sun_asa:
+                reason.append("Not opted in")
+            logger.warning(f"⚠️ SUN transfer skipped: {', '.join(reason)}")
 
         # ✅ Also update seller's SUN minted for houses that contributed supply
         self._credit_sellers(house.feeder_id, pool_allocation_kwh)
