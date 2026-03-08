@@ -149,8 +149,8 @@ class PoolEngine:
         if not pool_state:
             pool_state = PoolState(feeder_id=feeder_id)
 
-        pool_state.current_supply_kwh = state_data["total_supply"]
-        pool_state.current_demand_kwh = state_data["total_demand"]
+        pool_state.current_supply_kwh = state_data["current_supply_kwh"]
+        pool_state.current_demand_kwh = state_data["current_demand_kwh"]
         pool_state.grid_drawdown = state_data["grid_drawdown"]
         pool_state.timestamp = datetime.utcnow()
 
@@ -160,8 +160,8 @@ class PoolEngine:
 
         logger.debug(
             f"Pool state updated: "
-            f"Supply={state_data['total_supply']:.2f}kWh, "
-            f"Demand={state_data['total_demand']:.2f}kWh, "
+            f"Supply={state_data['current_supply_kwh']:.2f}kWh, "
+            f"Demand={state_data['current_demand_kwh']:.2f}kWh, "
             f"GridDrawdown={state_data['grid_drawdown']:.2f}kWh"
         )
 

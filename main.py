@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan context manager."""
     # Startup
-    logger.info("🌞 ROSHNI Backend Starting...")
+    logger.info("[STARTUP] ROSHNI Backend Starting...")
     init_db()
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
     yield
     # Shutdown
-    logger.info("🌞 ROSHNI Backend Shutting Down...")
+    logger.info("[SHUTDOWN] ROSHNI Backend Shutting Down...")
 
 app = FastAPI(
     title="ROSHNI - Solar Energy Pool",
