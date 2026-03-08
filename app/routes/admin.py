@@ -294,3 +294,106 @@ async def get_all_feeders_summary(db: Session = Depends(get_db)):
         "total_feeders": len(feeders),
         "feeders": feeder_list,
     }
+
+
+@router.get("/setup/status")
+async def get_setup_status(db: Session = Depends(get_db)):
+    """
+    Admin endpoint: Check current setup status.
+    Shows which houses have wallets, generation records, etc.
+    """
+    from app.services.iot_service import iot_service
+    
+    houses = db.query(House).all()
+    feeders = db.query(Feeder).all()
+    
+    house_details = []
+    for house in houses:
+        gen_records = db.query(GenerationRecord).filter(GenerationRecord.house_id == house.id).all()
+        demand_records = db.query(DemandRecord).filter(DemandRecord.house_id == house.id).all()
+        
+        iot_status = iot_service.get_device_status(house.house_id)
+        
+        house_details.append({
+            "house_id": house.house_id,
+            "prosumer_type": house.prosumer_type,
+            "has_wallet": bool(house.algorand_address),
+            "opted_in_sun": house.opt_in_sun_asa,
+            "generation_records": len(gen_records),
+            "total_generated_kwh": sum(g.generation_kwh for g in gen_records),
+            "demand_records": len(demand_records),
+            "total_demanded_kwh": sum(d.demand_kwh for d in demand_records),
+            "iot_status": "online" if iot_status and iot_status.get("status") == "online" else "offline",
+            "current_generation_kw": iot_status.get("generation_kwh", 0) if iot_status else 0,
+        })
+    
+    return {
+        "status": "success",
+        "feeders": len(feeders),
+        "houses": house_details,
+        "iot_service": {
+            "all_devices": iot_service.get_all_status(),
+        },
+    }
+
+
+@router.post("/setup/initialize-all-wallets")
+async def initialize_all_wallets(db: Session = Depends(get_db)):
+    """
+    Admin endpoint: Initialize wallets for all houses in the system.
+    Useful for demo/testing.
+    """
+    from app.services.wallet_service import WalletService
+    
+    houses = db.query(House).all()
+    wallet_service = WalletService()
+    
+    results = {
+        "initialized": [],
+        "already_initialized": [],
+        "errors": [],
+    }
+    
+    for house in houses:
+        if house.algorand_address:
+            results["already_initialized"].append(house.house_id)
+            continue
+        
+        try:
+            # Create wallet
+            wallet_result = wallet_service.create_wallet()
+            house.algorand_address = wallet_result["algorand_address"]
+            house.algorand_private_key = wallet_result["algorand_private_key"]
+            
+            # Fund wallet
+            fund_result = wallet_service.fund_wallet(wallet_result["algorand_address"], 2.0)
+            
+            # Opt-in to SUN ASA
+            opt_in_result = wallet_service.opt_in_to_sun_asa(
+                algorand_address=wallet_result["algorand_address"],
+                algorand_private_key=wallet_result["algorand_private_key"],
+            )
+            
+            if opt_in_result.get("status") == "success":
+                house.opt_in_sun_asa = True
+            
+            db.commit()
+            results["initialized"].append({
+                "house_id": house.house_id,
+                "address": wallet_result["algorand_address"][:15] + "...",
+                "funded": fund_result.get("status") == "success",
+                "opted_in": opt_in_result.get("status") == "success",
+            })
+            
+            logger.info(f"Initialized wallet for {house.house_id}")
+        except Exception as e:
+            results["errors"].append({
+                "house_id": house.house_id,
+                "error": str(e),
+            })
+            logger.error(f"Failed to initialize wallet for {house.house_id}: {e}")
+    
+    return {
+        "status": "success",
+        "results": results,
+    }

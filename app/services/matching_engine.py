@@ -32,7 +32,7 @@ class MatchingEngine:
 
         # ✅ Use live recalculated pool state (not cached DB value)
         pool_state = self.pool_engine.get_pool_state(house.feeder_id)
-        available_supply = pool_state["total_supply"]
+        available_supply = pool_state["current_supply_kwh"]
 
         # Get AI allocation decision
         ai_recommendation = self.ai_service.get_allocation_strategy(

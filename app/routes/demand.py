@@ -34,8 +34,21 @@ async def submit_demand(data: DemandSubmit, db: Session = Depends(get_db)):
     db.refresh(demand)
 
     # Run matching engine
-    matching = MatchingEngine(db)
-    result = matching.match_demand(house.id, data.demand_kwh)
+    try:
+        matching = MatchingEngine(db)
+        result = matching.match_demand(house.id, data.demand_kwh)
+    except Exception as e:
+        logger.error(f"Matching failed for {data.house_id}: {e}")
+        # Fallback: allocate all from grid
+        result = {
+            "pool_kwh": 0,
+            "grid_kwh": data.demand_kwh,
+            "ai_reasoning": "Fallback: matching failed, using grid",
+            "estimated_pool_cost_inr": 0,
+            "estimated_grid_cost_inr": data.demand_kwh * 12,  # Assume 12 INR/kWh
+            "sun_tokens_minted": 0,
+            "blockchain_tx": None,
+        }
 
     # ✅ Fix: mark demand as fulfilled so it stops counting in pool demand
     demand.status = "fulfilled" if result["grid_kwh"] == 0 else "partial"

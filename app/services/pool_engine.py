@@ -75,6 +75,15 @@ class PoolEngine:
                     active_generators += 1
                     logger.debug(f"Using DB data for {house.house_id}: {latest.generation_kwh} kW")
 
+        # Subtract recently allocated pool energy (simulates committed supply)
+        recent_allocations = self.db.query(Allocation).join(House).filter(
+            House.feeder_id == feeder_id,
+            Allocation.source_type == "pool",
+            Allocation.created_at >= two_min_ago,
+        ).all()
+        allocated_supply = sum(a.allocated_kwh for a in recent_allocations)
+        total_supply = max(0, total_supply - allocated_supply)  # Pool decreases when allocated
+
         # Get pending demand across feeder
         pending_demand = self.db.query(DemandRecord).join(House).filter(
             House.feeder_id == feeder_id,
@@ -93,11 +102,11 @@ class PoolEngine:
             "active_generators": active_generators,
             "timestamp": datetime.utcnow(),
         }
-        logger.info(f"Pool state for feeder {feeder_id}: {result}")
+        logger.info(f"Pool state for feeder {feeder_id}: Supply={total_supply:.2f}, Allocated={allocated_supply:.2f}, Demand={total_demand:.2f}")
         return result
 
     def _get_realtime_iot_generation(self, house_id: str) -> float:
-        """Get cumulative generation from IoT devices for pool calculations."""
+        """Get current generation from IoT devices for pool calculations."""
         try:
             # Try to get IoT data from a global registry
             # This avoids circular imports with main.py
@@ -105,10 +114,10 @@ class PoolEngine:
             main_module = sys.modules.get('main')
             if main_module and hasattr(main_module, 'iot_service'):
                 iot_service = main_module.iot_service
-                # Return cumulative generation for pool supply
-                cumulative = iot_service.get_cumulative_generation(house_id)
-                if cumulative > 0:
-                    return cumulative
+                # Return current generation for pool supply
+                current = iot_service.get_generation(house_id)
+                if current > 0:
+                    return current
             return None
         except Exception as e:
             logger.debug(f"Could not get IoT data for {house_id}: {e}")
